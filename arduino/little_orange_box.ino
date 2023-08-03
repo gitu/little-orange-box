@@ -7,7 +7,7 @@
 #define PIXEL GPIO_NUM_3
 #define PIXEL_POWER GPIO_NUM_2
 #define BUTTON_PIN GPIO_NUM_1
-#define MAX_IDLE_MS 1000*60*30
+#define MAX_IDLE_MS 1000*60*2
 
 Bounce debouncer = Bounce();
 BleGamepad bleGamepad("Little Orange Box", "flo");
@@ -19,19 +19,22 @@ uint8_t curr_val = 0;
 unsigned long lastInteraction = 0;
 
 void setup() {
-  pixels.begin();
   pinMode(PIXEL_POWER, OUTPUT);
   digitalWrite(PIXEL_POWER, HIGH);
+  pinMode(BUTTON_PIN, INPUT); // Setup the button with an internal pull-up
+
+  pixels.begin();
 
   pixels.setPixelColor(0, pixels.Color(0,255,0));
   pixels.show();
-  delay(2000);
+  delay(1000);
 
-  bleGamepad
+  bleGamepadConfig.setButtonCount(1);
+  bleGamepadConfig.setHatSwitchCount(0);
+  bleGamepadConfig.setWhichSpecialButtons(false,false,false,false,false,false,false,false);
 
-  bleGamepad.begin(); // Begin the gamepad
+  bleGamepad.begin(&bleGamepadConfig); // Begin the gamepad
 
-  pinMode(BUTTON_PIN, INPUT); // Setup the button with an internal pull-up
 
   debouncer.attach(BUTTON_PIN); // After setting up the button, setup the Bounce instance :
   debouncer.interval(5);        // interval in ms
@@ -50,6 +53,7 @@ void loop() {
       // Press/release gamepad button and turn on or off the LED as determined by the state
       if (value == LOW)
       {
+          lastInteraction = millis();
           pixels.setPixelColor(0, pixels.Color(0,0,255));
           pixels.show();
           delay(2);
@@ -73,9 +77,10 @@ void loop() {
     }
   }
 
-  if (millis()-lastInteraction > MAX_IDLE_MS) {
-      digitalWrite(PIXEL_POWER, LOW);
-      esp_sleep_enable_ext0_wakeup(BUTTON_PIN,HIGH);
-      esp_deep_sleep_start();
+  if (millis() - lastInteraction > MAX_IDLE_MS) {
+     digitalWrite(PIXEL_POWER, LOW);
+     esp_sleep_enable_ext0_wakeup(PIXEL,1);
+     esp_deep_sleep_start();
+
   }
 }
