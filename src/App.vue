@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import HelloWorld from './components/HelloWorld.vue'
+import Launcher from './components/Launcher.vue'
 </script>
 
 <template>
-  <HelloWorld />
+  <Launcher />
 </template>
 
 <style scoped>
