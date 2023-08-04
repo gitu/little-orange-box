@@ -26,18 +26,18 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="!connected">
+  <h1 v-if="!connected">
     PREPARE FOR LAUNCH!
-  </div>
-  <div v-else-if="launched">
+  </h1>
+  <h1 v-else-if="launched">
     LAUNCHED!
-  </div>
-  <div v-else-if="launching" class="shake">
+  </h1>
+  <h1 v-else-if="launching" class="shake">
     LAUNCHING!
-  </div>
-  <div v-else>
+  </h1>
+  <h1 v-else>
     READY FOR LAUNCH!
-  </div>
+  </h1>
 </template>
 
 <style scoped>
