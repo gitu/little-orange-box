@@ -8,6 +8,9 @@
 #define PIXEL_POWER GPIO_NUM_2
 #define BUTTON_PIN GPIO_NUM_1
 #define MAX_IDLE_MS 1000*60*2
+#define INITIAL_RED 600
+#define MUL_RED 4
+#define DIV_RED 5
 
 Bounce b = Bounce();
 BleGamepad bleGamepad("Little Orange Box", "flo");
@@ -16,8 +19,8 @@ Adafruit_NeoPixel pixels(1, PIXEL, NEO_GRB + NEO_KHZ800);
 
 uint8_t curr_val = 0;
 
-unsigned long nextSwitch = 1000;
-unsigned long currentInterval = 1000;
+unsigned long nextSwitch = INITIAL_RED;
+unsigned long currentInterval = INITIAL_RED;
 bool currentlyOn = false;
 bool currentTarget = false;
 
@@ -56,8 +59,8 @@ void loop() {
       b.update();
 
       if (b.rose()){
-        nextSwitch = 1000;
-        currentInterval = 1000;
+        nextSwitch = INITIAL_RED;
+        currentInterval = INITIAL_RED;
         currentTarget = true;
         currentlyOn = false;
 
@@ -80,7 +83,7 @@ void loop() {
           if (b.currentDuration()>nextSwitch) {
             nextSwitch += currentInterval;
             currentTarget = !currentTarget;
-            currentInterval = (2*currentInterval)/3;
+            currentInterval = (MUL_RED*currentInterval)/DIV_RED;
 
             if (currentInterval<20) {
               bleGamepad.press(BUTTON_2);
@@ -106,7 +109,7 @@ void loop() {
       pixels.show();
       delay(20);
       if (bleGamepad.isConnected()) {
-        pixelHue = 65536;
+        return;
       }
     }
 
