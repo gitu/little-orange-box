@@ -6,7 +6,7 @@ const connected = ref(false);
 const launching = ref(false);
 const launched = ref(false);
 const targetSet = ref(false);
-const target = ref('https://github.com/');
+const target = ref('https://youtu.be/dQw4w9WgXcQ');
 
 
 onMounted(() => {
