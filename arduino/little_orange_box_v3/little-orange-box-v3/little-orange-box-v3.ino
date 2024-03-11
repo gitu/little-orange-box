@@ -4,6 +4,8 @@
 SFE_MAX1704X lipo(MAX1704X_MAX17048); // Allow access to all the 17048 features
 
 #include <esp_sleep.h>
+#include <Bounce2.h>    // https://github.com/thomasfredericks/Bounce2
+#include <BleKeyboard.h> //https://github.com/wakwak-koba/ESP32-NimBLE-Keyboard
 
 
 #define LED_PIN  GPIO_NUM_14
@@ -14,6 +16,15 @@ SFE_MAX1704X lipo(MAX1704X_MAX17048); // Allow access to all the 17048 features
 
 #define FADE_STEPS 2
 #define DELAY 10
+
+Bounce2::Button button = Bounce2::Button();
+BleKeyboard bleKeyboard("Orange Box", "flo", 100);
+
+
+#define FADING 1
+#define SOLID 2
+#define FAST_BLINKING 3
+volatile uint8_t ledMode = FADING;
 
 void print_wakeup_reason(){
   esp_sleep_wakeup_cause_t wakeup_reason;
@@ -37,13 +48,17 @@ void setup()
   pinMode(MAIN_PIN, INPUT_PULLUP);
   pinMode(MODE_A_PIN, INPUT_PULLUP);
   pinMode(MODE_B_PIN, INPUT_PULLUP);
-
-
-  //analogWrite(LED_PIN, LOW);
   
 	Serial.begin(115200); // Start serial, to output debug data
 
   Wire.begin();
+
+
+  button.attach(MAIN_PIN, INPUT_PULLUP);
+  button.setPressedState( LOW ); 
+  button.interval(20);  
+
+  bleKeyboard.begin();
 
   // Set up the MAX17048 LiPo fuel gauge:
   if (lipo.begin() == false) // Connect to the MAX17048 using the default wire port
@@ -75,9 +90,35 @@ int mode = 0;
 int brightness = 0;  // how bright the LED is
 int fadeAmount = FADE_STEPS;  // how many points to fade the LED by
 
+
+void ledHandler() {
+  if (ledMode==FADING) {
+    analogWrite(LED_PIN, brightness);
+    brightness = brightness + fadeAmount;
+    if (brightness <= 0 || brightness >= 255) {
+      fadeAmount = -fadeAmount;
+    }
+  } else if (ledMode==SOLID) {
+    analogWrite(LED_PIN, 255);
+    brightness = 0;
+  } else if (ledMode == FAST_BLINKING) {
+    if (brightness%128 > 64) {
+      analogWrite(LED_PIN, 255);
+    } else {
+      analogWrite(LED_PIN, 0);
+    }
+    brightness = brightness + fadeAmount;
+    if (brightness <= 0 || brightness >= 255) {
+      fadeAmount = -fadeAmount;
+    }    
+  }
+}
+
 void loop()
 {
   l++;
+
+  button.update();
 
   p = digitalRead(POWER_PIN);
   m = digitalRead(MAIN_PIN);
@@ -119,6 +160,8 @@ void loop()
     Serial.print("%/hr");
     Serial.println();
 
+    //bleKeyboard.setBatteryLevel(lipo.getSOC());
+
     if (!p) {
        Serial.println("going for deep sleep!");
 
@@ -129,19 +172,33 @@ void loop()
     }
   }
 
-
-  analogWrite(LED_PIN, brightness);
-  brightness = brightness + fadeAmount;
-  if (brightness <= 0 || brightness >= 255) {
-    fadeAmount = -fadeAmount;
-    if (!a) {
-      fadeAmount = FADE_STEPS;
-      brightness = 0;
-    } else if (!b) {
-      fadeAmount = -FADE_STEPS;
-      brightness = 255;
+  // if mode = MODE_A
+  if (bleKeyboard.isConnected())
+  {
+    if (button.pressed()){
+      if (!a) {
+        Serial.println("MODE A");
+        bleKeyboard.press(KEY_RETURN);
+      } else if (!b) {
+        Serial.println("MODE B");
+        bleKeyboard.press(KEY_MEDIA_PLAY_PAUSE);
+      }
+      ledMode = FAST_BLINKING;
+    } else if (button.released()) {
+      bleKeyboard.releaseAll();
+      ledMode = SOLID;
+    } else {
+      if (ledMode != SOLID || ledMode != FAST_BLINKING) {
+        ledMode = SOLID;
+        ledHandler();
+      }
+      if (ledMode != SOLID) {
+        ledHandler();
+      }
     }
+  } else {
+    ledMode = FADING;
+    ledHandler();
   }
-
   delay(DELAY);
 }
