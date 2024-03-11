@@ -9,7 +9,7 @@ SFE_MAX1704X lipo(MAX1704X_MAX17048); // Allow access to all the 17048 features
 #define LED_PIN  GPIO_NUM_14
 #define MAIN_PIN GPIO_NUM_32
 #define MODE_A_PIN GPIO_NUM_33
-#define MODE_B_PIN GPIO_NUM_27
+#define MODE_B_PIN GPIO_NUM_15
 #define POWER_PIN GPIO_NUM_12
 
 #define FADE_STEPS 2
@@ -120,11 +120,11 @@ void loop()
     Serial.println();
 
     if (!p) {
-      Serial.println("going for deep sleep!");
+       Serial.println("going for deep sleep!");
 
       esp_sleep_enable_ext0_wakeup(POWER_PIN, 1);
       Serial.println("Going to sleep now");
-      delay(500);
+      delay(200);
       esp_deep_sleep_start();
     }
   }
