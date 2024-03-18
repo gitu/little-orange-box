@@ -58,7 +58,6 @@ void setup()
   button.setPressedState( LOW ); 
   button.interval(20);  
 
-  bleKeyboard.begin();
 
   // Set up the MAX17048 LiPo fuel gauge:
   if (lipo.begin() == false) // Connect to the MAX17048 using the default wire port
@@ -67,6 +66,11 @@ void setup()
     while (1)
       ;
   }
+
+  bleKeyboard.setBatteryLevel(lipo.getSOC());
+
+  bleKeyboard.begin();
+
 
   delay(1000);
 
@@ -89,7 +93,7 @@ int mode = 0;
 
 int brightness = 0;  // how bright the LED is
 int fadeAmount = FADE_STEPS;  // how many points to fade the LED by
-
+uint8_t batteryLevel =0;
 
 void ledHandler() {
   if (ledMode==FADING) {
@@ -151,16 +155,24 @@ void loop()
     Serial.print(lipo.getVoltage());  // Print the battery voltage
     Serial.print("V");
 
+
+    batteryLevel = lipo.getSOC();
     Serial.print(" Percentage: ");
     Serial.print(lipo.getSOC(), 2); // Print the battery state of charge with 2 decimal places
     Serial.print("%");
+    Serial.print(" (");
+    Serial.print(batteryLevel);
+    Serial.print(")");
 
     Serial.print(" Change Rate: ");
     Serial.print(lipo.getChangeRate(), 2); // Print the battery change rate with 2 decimal places
     Serial.print("%/hr");
     Serial.println();
 
-    //bleKeyboard.setBatteryLevel(lipo.getSOC());
+    if (bleKeyboard.isConnected()) {
+      bleKeyboard.setBatteryLevel(batteryLevel);
+    }
+
 
     if (!p) {
        Serial.println("going for deep sleep!");
