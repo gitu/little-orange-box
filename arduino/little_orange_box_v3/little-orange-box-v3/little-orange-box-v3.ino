@@ -75,7 +75,7 @@ int brightness = 0;  // how bright the LED is
 int fadeAmount = FADE_STEPS;  // how many points to fade the LED by
 uint8_t batteryLevel =0;
 
-
+bool wasConnected = false;
 void loop()
 {
   updateLoopState();
@@ -91,8 +91,16 @@ void loop()
   }
 
   if (bleKeyboard.isConnected()) {
+    if (!wasConnected) {
+      ledMode = FAST_BLINKING;
+      wasConnected = true;
+    }
     handleKeyboard();
   } else {
+    if (wasConnected) {
+      ledMode = BREATHING;
+      wasConnected = false;
+    }
     if (button.pressed()) {
       ledMode = (ledMode%6)+1;
     }
@@ -110,11 +118,10 @@ void handleKeyboard() {
       Serial.println("MODE B");
       bleKeyboard.press(KEY_MEDIA_PLAY_PAUSE);      
     }
-    ledMode = FAST_BLINKING;
+    ledMode = SOLID;
   } else if (button.released()) {
     bleKeyboard.releaseAll();
-  } else {
-    ledMode = WAVE;
+    ledMode = FAST_BLINKING;
   }
 }
 
@@ -194,21 +201,29 @@ void ledHandler() {
     brightness = 0;
   } else if (ledMode == FAST_BLINKING) {
     blinkCounter++;
-    if (blinkCounter % 50 == 0) {
-      digitalWrite(LED_PIN, blinkOn);
+    if (blinkCounter % 10 == 0) {
+      if (blinkOn) {
+        analogWrite(LED_PIN, 255);
+      } else {
+        analogWrite(LED_PIN,0);
+      }
       blinkOn = !blinkOn;
     }
   } else if (ledMode == SLOW_BLINKING) {
     blinkCounter++;
     if (blinkCounter % 100 == 0) {
-      digitalWrite(LED_PIN, blinkOn);
+      if (blinkOn) {
+        analogWrite(LED_PIN, 255);
+      } else {
+        analogWrite(LED_PIN,0);
+      }
       blinkOn = !blinkOn;
     }
   } else if (ledMode == BREATHING) {
     analogWrite(LED_PIN, brightness);
     blinkCounter++;
     // Calculate the brightness based on a sine wave, using breathCounter as the time variable
-    float cycleTime = 400.0; // The duration of one breathing cycle in "ticks" of breathCounter
+    float cycleTime = 600.0; // The duration of one breathing cycle in "ticks" of breathCounter
     float breathPhase = (blinkCounter % (unsigned long)cycleTime) / cycleTime; // Normalized phase of the cycle
     int brightness = (sin(breathPhase * 2 * PI) + 1) * 127.5; // sine wave for breathing effect
     
