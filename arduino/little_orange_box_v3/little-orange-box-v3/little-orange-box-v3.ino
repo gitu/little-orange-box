@@ -6,7 +6,7 @@ SFE_MAX1704X lipo(MAX1704X_MAX17048); // Allow access to all the 17048 features
 #include <esp_sleep.h>
 #include <Bounce2.h>    // https://github.com/thomasfredericks/Bounce2
 #include <BleKeyboard.h> //https://github.com/wakwak-koba/ESP32-NimBLE-Keyboard
-
+#include <math.h>
 
 #define LED_PIN  GPIO_NUM_14
 #define MAIN_PIN GPIO_NUM_32
@@ -24,27 +24,16 @@ BleKeyboard bleKeyboard("Orange Box", "flo", 100);
 #define FADING 1
 #define SOLID 2
 #define FAST_BLINKING 3
-volatile uint8_t ledMode = FADING;
+#define SLOW_BLINKING 4
+#define BREATHING 5
+#define WAVE 6
 
-void print_wakeup_reason(){
-  esp_sleep_wakeup_cause_t wakeup_reason;
+volatile uint8_t ledMode = SLOW_BLINKING;
 
-  wakeup_reason = esp_sleep_get_wakeup_cause();
-
-  switch(wakeup_reason)
-  {
-    case ESP_SLEEP_WAKEUP_EXT0 : Serial.println("Wakeup caused by external signal using RTC_IO"); break;
-    case ESP_SLEEP_WAKEUP_EXT1 : Serial.println("Wakeup caused by external signal using RTC_CNTL"); break;
-    case ESP_SLEEP_WAKEUP_TIMER : Serial.println("Wakeup caused by timer"); break;
-    case ESP_SLEEP_WAKEUP_TOUCHPAD : Serial.println("Wakeup caused by touchpad"); break;
-    case ESP_SLEEP_WAKEUP_ULP : Serial.println("Wakeup caused by ULP program"); break;
-    default : Serial.printf("Wakeup was not caused by deep sleep: %d\n",wakeup_reason); break;
-  }
-}
 void setup()
 {
   pinMode(LED_PIN, OUTPUT);
-  pinMode(POWER_PIN, OUTPUT);
+  pinMode(POWER_PIN, INPUT);
   pinMode(MAIN_PIN, INPUT_PULLUP);
   pinMode(MODE_A_PIN, INPUT_PULLUP);
   pinMode(MODE_B_PIN, INPUT_PULLUP);
@@ -68,26 +57,17 @@ void setup()
   }
 
   bleKeyboard.setBatteryLevel(lipo.getSOC());
-
   bleKeyboard.begin();
-
-
-  delay(1000);
-
-  print_wakeup_reason();
-
-
 }
 
-bool m = 0;
-bool a = 0;
-bool b = 0;
-bool p = 0;
+bool mainButtonPressed = 0;
+bool toggleA = 0;
+bool toggleB = 0;
+bool toggleOn = 0;
 
-int s = 0;
-int ls = 0;
+int fullState = 0;
+int lastState = 0;
 
-int l = 0;
 int mode = 0;
 
 
@@ -95,6 +75,113 @@ int brightness = 0;  // how bright the LED is
 int fadeAmount = FADE_STEPS;  // how many points to fade the LED by
 uint8_t batteryLevel =0;
 
+
+void loop()
+{
+  updateLoopState();
+
+  if (fullState!=lastState) {
+    lastState = fullState;    
+
+    printState();
+
+    if (!toggleOn) {
+      startDeepSleep();
+    }
+  }
+
+  if (bleKeyboard.isConnected()) {
+    handleKeyboard();
+  } else {
+    if (button.pressed()) {
+      ledMode = (ledMode%6)+1;
+    }
+  }
+  ledHandler();
+  delay(DELAY);
+}
+
+void handleKeyboard() {
+  if (button.pressed()){
+    if (!toggleA) {
+      Serial.println("MODE A");
+      bleKeyboard.press(KEY_RETURN);
+    } else if (!toggleB) {
+      Serial.println("MODE B");
+      bleKeyboard.press(KEY_MEDIA_PLAY_PAUSE);      
+    }
+    ledMode = FAST_BLINKING;
+  } else if (button.released()) {
+    bleKeyboard.releaseAll();
+  } else {
+    ledMode = WAVE;
+  }
+}
+
+void startDeepSleep() {
+  esp_sleep_enable_ext0_wakeup(POWER_PIN, 1);
+  Serial.println("Going to sleep now");
+  delay(10);
+  esp_deep_sleep_start();
+}
+
+void updateLoopState() {
+  button.update();
+
+  toggleOn = digitalRead(POWER_PIN);
+  mainButtonPressed = digitalRead(MAIN_PIN);
+  toggleA = digitalRead(MODE_A_PIN);
+  toggleB = digitalRead(MODE_B_PIN);
+
+  mode = (toggleA<< 2) + (toggleB<<1);
+  fullState = (button.changed()<<6) + (button.isPressed()<<5) + (toggleOn<<4) + (mainButtonPressed<<3) +  (toggleA<< 2) + (toggleB<<1);
+  
+  batteryLevel = lipo.getSOC();
+  bleKeyboard.setBatteryLevel(batteryLevel);
+}
+
+void printState() {
+    Serial.print(fullState);
+    Serial.print("  MODE: ");
+    Serial.print(mode);
+    Serial.print("  button.changed: ");
+    Serial.print(button.changed());
+    Serial.print("  button.isPressed: ");
+    Serial.print(button.isPressed());
+    Serial.print("  MAIN_PIN: ");
+    Serial.print(mainButtonPressed);
+    Serial.print("  MODE_A_PIN: ");
+    Serial.print(toggleA);
+    Serial.print("  MODE_B_PIN: ");
+    Serial.print(toggleB);
+    Serial.print("  POWER_PIN: ");
+    Serial.print(toggleOn);
+
+    // Print the variables:
+    Serial.print("   Voltage: ");
+    Serial.print(lipo.getVoltage());  // Print the battery voltage
+    Serial.print("V");
+
+
+    Serial.print(" Percentage: ");
+    Serial.print(lipo.getSOC(), 2); // Print the battery state of charge with 2 decimal places
+    Serial.print("%");
+    Serial.print(" (");
+    Serial.print(batteryLevel);
+    Serial.print(")");
+
+    Serial.print(" Change Rate: ");
+    Serial.print(lipo.getChangeRate(), 2); // Print the battery change rate with 2 decimal places
+    Serial.print("%/hr");
+    Serial.print(" - ");
+    Serial.print(ledMode);
+    Serial.println();
+}
+
+
+int blinkCounter = 0;
+float wavePosition = 0.0;
+bool blinkOn = false;
 void ledHandler() {
   if (ledMode==FADING) {
     analogWrite(LED_PIN, brightness);
@@ -106,111 +193,34 @@ void ledHandler() {
     analogWrite(LED_PIN, 255);
     brightness = 0;
   } else if (ledMode == FAST_BLINKING) {
-    if (brightness%128 > 64) {
-      analogWrite(LED_PIN, 255);
-    } else {
-      analogWrite(LED_PIN, 0);
+    blinkCounter++;
+    if (blinkCounter % 50 == 0) {
+      digitalWrite(LED_PIN, blinkOn);
+      blinkOn = !blinkOn;
     }
-    brightness = brightness + fadeAmount;
-    if (brightness <= 0 || brightness >= 255) {
-      fadeAmount = -fadeAmount;
-    }    
+  } else if (ledMode == SLOW_BLINKING) {
+    blinkCounter++;
+    if (blinkCounter % 100 == 0) {
+      digitalWrite(LED_PIN, blinkOn);
+      blinkOn = !blinkOn;
+    }
+  } else if (ledMode == BREATHING) {
+    analogWrite(LED_PIN, brightness);
+    blinkCounter++;
+    // Calculate the brightness based on a sine wave, using breathCounter as the time variable
+    float cycleTime = 400.0; // The duration of one breathing cycle in "ticks" of breathCounter
+    float breathPhase = (blinkCounter % (unsigned long)cycleTime) / cycleTime; // Normalized phase of the cycle
+    int brightness = (sin(breathPhase * 2 * PI) + 1) * 127.5; // sine wave for breathing effect
+    
+    analogWrite(LED_PIN, brightness);
+  } else if (ledMode == WAVE) {
+    // WAVE mode logic
+    wavePosition += 0.15; // Increment wave position to progress through the sine wave
+    if (wavePosition > 2 * PI) { // Reset wave position after completing a cycle
+      wavePosition -= 2 * PI;
+    }
+    // Calculate brightness based on sine wave, scaling it to the 0-255 range
+    brightness = (sin(wavePosition) + 1) * 127.5; // sin() returns a value between -1 and 1
+    analogWrite(LED_PIN, brightness);
   }
-}
-
-void loop()
-{
-  l++;
-
-  button.update();
-
-  p = digitalRead(POWER_PIN);
-  m = digitalRead(MAIN_PIN);
-  a = digitalRead(MODE_A_PIN);
-  b = digitalRead(MODE_B_PIN);
-
-  mode = (a<< 2) + (b<<1);
-
-  s = (p<<4) + (m<<3) +  (a<< 2) + (b<<1);
-
-  if (s!=ls) {
-    ls = s;    
-
-    Serial.print(s);
-    Serial.print("  MODE: ");
-    Serial.print(mode);
-    Serial.print("  MAIN_PIN: ");
-    Serial.print(m);
-    Serial.print("  MODE_A_PIN: ");
-    Serial.print(a);
-    Serial.print("  MODE_B_PIN: ");
-    Serial.print(b);
-    Serial.print("  POWER_PIN: ");
-    Serial.print(p);
-
-
-
-    // Print the variables:
-    Serial.print("   Voltage: ");
-    Serial.print(lipo.getVoltage());  // Print the battery voltage
-    Serial.print("V");
-
-
-    batteryLevel = lipo.getSOC();
-    Serial.print(" Percentage: ");
-    Serial.print(lipo.getSOC(), 2); // Print the battery state of charge with 2 decimal places
-    Serial.print("%");
-    Serial.print(" (");
-    Serial.print(batteryLevel);
-    Serial.print(")");
-
-    Serial.print(" Change Rate: ");
-    Serial.print(lipo.getChangeRate(), 2); // Print the battery change rate with 2 decimal places
-    Serial.print("%/hr");
-    Serial.println();
-
-    if (bleKeyboard.isConnected()) {
-      bleKeyboard.setBatteryLevel(batteryLevel);
-    }
-
-
-    if (!p) {
-       Serial.println("going for deep sleep!");
-
-      esp_sleep_enable_ext0_wakeup(POWER_PIN, 1);
-      Serial.println("Going to sleep now");
-      delay(200);
-      esp_deep_sleep_start();
-    }
-  }
-
-  // if mode = MODE_A
-  if (bleKeyboard.isConnected())
-  {
-    if (button.pressed()){
-      if (!a) {
-        Serial.println("MODE A");
-        bleKeyboard.press(KEY_RETURN);
-      } else if (!b) {
-        Serial.println("MODE B");
-        bleKeyboard.press(KEY_MEDIA_PLAY_PAUSE);
-      }
-      ledMode = FAST_BLINKING;
-    } else if (button.released()) {
-      bleKeyboard.releaseAll();
-      ledMode = SOLID;
-    } else {
-      if (ledMode != SOLID || ledMode != FAST_BLINKING) {
-        ledMode = SOLID;
-        ledHandler();
-      }
-      if (ledMode != SOLID) {
-        ledHandler();
-      }
-    }
-  } else {
-    ledMode = FADING;
-    ledHandler();
-  }
-  delay(DELAY);
 }
